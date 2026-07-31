@@ -9,12 +9,17 @@ import logic
 
 root = Tk()
 root.title("User Records")
-root.geometry("700x500")
-root.minsize(650, 400)
+root.geometry("850x550")
+root.minsize(750, 450)
+
+
+# Stores the database ID of the user
+# currently loaded into the main form.
+selected_user_id = None
 
 
 # --------------------------------
-# Insert a Treeview Row
+# Insert Treeview Row
 # --------------------------------
 
 def insert_tree_row(values):
@@ -58,17 +63,31 @@ def refresh_row_colors():
 # --------------------------------
 
 def clear_form():
+    global selected_user_id
+
+    selected_user_id = None
+
     entryName.delete(0, END)
     entryAge.delete(0, END)
+
     gender_var.set("Male")
+
+    btnUpdate.config(
+        state=DISABLED
+    )
+
+    tree.selection_remove(
+        tree.selection()
+    )
+
     entryName.focus()
 
 
 # --------------------------------
-# Add User
+# Validate User Form
 # --------------------------------
 
-def add_user():
+def validate_user_form():
     name = entryName.get().strip()
     gender = gender_var.get().strip()
     age_text = entryAge.get().strip()
@@ -78,7 +97,7 @@ def add_user():
             "Missing Information",
             "Please enter a name, gender, and age."
         )
-        return
+        return None
 
     try:
         age = int(age_text)
@@ -91,8 +110,24 @@ def add_user():
             "Invalid Age",
             "Age must be a positive whole number."
         )
+
         entryAge.focus()
+        return None
+
+    return name, gender, age
+
+
+# --------------------------------
+# Add User
+# --------------------------------
+
+def add_user():
+    user_data = validate_user_form()
+
+    if user_data is None:
         return
+
+    name, gender, age = user_data
 
     try:
         user_id = logic.add_to_database(
@@ -118,6 +153,92 @@ def add_user():
     )
 
     clear_form()
+
+
+# --------------------------------
+# Update Selected User
+# --------------------------------
+
+def update_selected_user():
+    global selected_user_id
+
+    if selected_user_id is None:
+        messagebox.showerror(
+            "No User Selected",
+            "Please select a user to update."
+        )
+        return
+
+    user_data = validate_user_form()
+
+    if user_data is None:
+        return
+
+    name, gender, age = user_data
+
+    try:
+        logic.update_user(
+            selected_user_id,
+            name,
+            gender,
+            age
+        )
+
+    except Exception as error:
+        messagebox.showerror(
+            "Database Error",
+            f"Unable to update the user.\n\n{error}"
+        )
+        return
+
+    load_users()
+    clear_form()
+
+    messagebox.showinfo(
+        "User Updated",
+        "The user was updated successfully."
+    )
+
+
+# --------------------------------
+# Fill Form From Selected Row
+# --------------------------------
+
+def fill_form_from_tree(event=None):
+    global selected_user_id
+
+    selected_items = tree.selection()
+
+    if not selected_items:
+        return
+
+    selected_item = selected_items[0]
+
+    row_data = tree.item(
+        selected_item,
+        "values"
+    )
+
+    if not row_data:
+        return
+
+    selected_user_id = int(row_data[0])
+
+    name = row_data[1]
+    gender = row_data[2]
+    age = row_data[3]
+
+    entryName.delete(0, END)
+    entryName.insert(0, name)
+
+    gender_var.set(gender)
+
+    entryAge.delete(0, END)
+    entryAge.insert(0, age)
+
+    btnUpdate.config(
+        state=NORMAL
+    )
 
 
 # --------------------------------
@@ -175,23 +296,16 @@ def save_charge(
             "The charge must be a positive number.",
             parent=charges_window
         )
+
         charge_entry.focus()
         return
 
     try:
-        charge_id = logic.add_charge(
+        logic.add_charge(
             user_id,
             charge,
             description
         )
-
-    except AttributeError:
-        messagebox.showerror(
-            "Missing Function",
-            "The add_charge() function is missing from logic.py.",
-            parent=charges_window
-        )
-        return
 
     except Exception as error:
         messagebox.showerror(
@@ -201,18 +315,15 @@ def save_charge(
         )
         return
 
-    charges_tree.insert(
-        "",
-        END,
-        values=(
-            charge_id,
-            f"${charge:.2f}",
-            description
-        )
+    load_charges(
+        user_id,
+        charges_tree,
+        charges_window
     )
 
     charge_entry.delete(0, END)
     description_entry.delete(0, END)
+
     charge_entry.focus()
 
 
@@ -229,12 +340,19 @@ def load_charges(
         charges_tree.delete(item)
 
     try:
-        charges = logic.get_charges(user_id)
+        charges = logic.get_charges(
+            user_id
+        )
 
-        for charge in charges:
+        for index, charge in enumerate(charges):
             charge_id = charge[0]
             amount = charge[1]
             description = charge[2]
+
+            if index % 2 == 0:
+                row_tag = "evenrow"
+            else:
+                row_tag = "oddrow"
 
             charges_tree.insert(
                 "",
@@ -243,13 +361,9 @@ def load_charges(
                     charge_id,
                     f"${float(amount):.2f}",
                     description
-                )
+                ),
+                tags=(row_tag,)
             )
-
-    except AttributeError:
-        # The window can still open if get_charges()
-        # has not been created yet in logic.py.
-        return
 
     except Exception as error:
         messagebox.showerror(
@@ -258,13 +372,19 @@ def load_charges(
             parent=charges_window
         )
 
+
 # --------------------------------
 # Show Total Charges
 # --------------------------------
 
-def show_total_charges(user_id, charges_window):
+def show_total_charges(
+    user_id,
+    charges_window
+):
     try:
-        total = logic.get_total_charges(user_id)
+        total = logic.get_total_charges(
+            user_id
+        )
 
         messagebox.showinfo(
             "Total Charges",
@@ -278,23 +398,39 @@ def show_total_charges(user_id, charges_window):
             f"Unable to calculate total charges.\n\n{error}",
             parent=charges_window
         )
+
+
 # --------------------------------
 # Open Charges Window
 # --------------------------------
 
 def open_charges(user_id, name):
     charges_window = Toplevel(root)
-    charges_window.title(f"Charges - {name}")
-    charges_window.geometry("600x500")
-    charges_window.minsize(500, 400)
+
+    charges_window.title(
+        f"Charges - {name}"
+    )
+
+    charges_window.geometry(
+        "650x500"
+    )
+
+    charges_window.minsize(
+        550,
+        400
+    )
 
     charges_window.transient(root)
 
+
     # --------------------------------
-    # Selected User
+    # Selected User Information
     # --------------------------------
 
-    user_frame = Frame(charges_window)
+    user_frame = Frame(
+        charges_window
+    )
+
     user_frame.pack(
         fill=X,
         padx=20,
@@ -306,15 +442,20 @@ def open_charges(user_id, name):
         text=f"User ID: {user_id}    Name: {name}",
         font=("Arial", 13, "bold")
     )
+
     lblSelectedUser.pack(
         anchor=W
     )
+
 
     # --------------------------------
     # Charge Entry Form
     # --------------------------------
 
-    charge_form = Frame(charges_window)
+    charge_form = Frame(
+        charges_window
+    )
+
     charge_form.pack(
         fill=X,
         padx=20,
@@ -326,10 +467,13 @@ def open_charges(user_id, name):
         weight=1
     )
 
+
+    # Charge
     lblCharge = Label(
         charge_form,
         text="Charge:"
     )
+
     lblCharge.grid(
         row=0,
         column=0,
@@ -341,6 +485,7 @@ def open_charges(user_id, name):
     entryCharge = Entry(
         charge_form
     )
+
     entryCharge.grid(
         row=0,
         column=1,
@@ -349,10 +494,13 @@ def open_charges(user_id, name):
         sticky=EW
     )
 
+
+    # Description
     lblDescription = Label(
         charge_form,
         text="Description:"
     )
+
     lblDescription.grid(
         row=1,
         column=0,
@@ -364,6 +512,7 @@ def open_charges(user_id, name):
     entryDescription = Entry(
         charge_form
     )
+
     entryDescription.grid(
         row=1,
         column=1,
@@ -372,11 +521,15 @@ def open_charges(user_id, name):
         sticky=EW
     )
 
+
     # --------------------------------
     # Charges Treeview Frame
     # --------------------------------
 
-    charges_tree_frame = Frame(charges_window)
+    charges_tree_frame = Frame(
+        charges_window
+    )
+
     charges_tree_frame.pack(
         fill=BOTH,
         expand=True,
@@ -384,14 +537,17 @@ def open_charges(user_id, name):
         pady=10
     )
 
+
     charges_scrollbar = Scrollbar(
         charges_tree_frame,
         orient=VERTICAL
     )
+
     charges_scrollbar.pack(
         side=RIGHT,
         fill=Y
     )
+
 
     charges_tree = ttk.Treeview(
         charges_tree_frame,
@@ -409,6 +565,8 @@ def open_charges(user_id, name):
         command=charges_tree.yview
     )
 
+
+    # Charges headings
     charges_tree.heading(
         "ID",
         text="ID"
@@ -424,6 +582,8 @@ def open_charges(user_id, name):
         text="Description"
     )
 
+
+    # Charges columns
     charges_tree.column(
         "ID",
         width=60,
@@ -442,7 +602,7 @@ def open_charges(user_id, name):
 
     charges_tree.column(
         "Description",
-        width=300,
+        width=350,
         minwidth=150,
         anchor=W,
         stretch=True
@@ -454,14 +614,31 @@ def open_charges(user_id, name):
         expand=True
     )
 
+
+    # Alternating charge row colors
+    charges_tree.tag_configure(
+        "evenrow",
+        background="#E8E8E8"
+    )
+
+    charges_tree.tag_configure(
+        "oddrow",
+        background="#FFFFFF"
+    )
+
+
     # --------------------------------
-    # Buttons
+    # Charge Buttons
     # --------------------------------
 
-    button_frame = Frame(charges_window)
+    button_frame = Frame(
+        charges_window
+    )
+
     button_frame.pack(
         pady=(0, 20)
     )
+
 
     btnSaveCharge = Button(
         button_frame,
@@ -475,10 +652,28 @@ def open_charges(user_id, name):
             charges_window
         )
     )
+
     btnSaveCharge.pack(
         side=LEFT,
         padx=5
     )
+
+
+    btnShowTotalCharges = Button(
+        button_frame,
+        text="Show Total Charges",
+        width=18,
+        command=lambda: show_total_charges(
+            user_id,
+            charges_window
+        )
+    )
+
+    btnShowTotalCharges.pack(
+        side=LEFT,
+        padx=5
+    )
+
 
     btnClose = Button(
         button_frame,
@@ -486,22 +681,14 @@ def open_charges(user_id, name):
         width=14,
         command=charges_window.destroy
     )
+
     btnClose.pack(
         side=LEFT,
         padx=5
     )
 
-    btnShowSumOfCharges = Button(
-        button_frame,
-        text="Show Total Charges",
-        width=18,
-        command=lambda: show_total_charges(user_id, charges_window)
-    )
-    btnShowSumOfCharges.pack(
-        side=LEFT,
-        padx=5
-    )
-    # Press Enter while in the description field
+
+    # Press Enter from description
     # to save the charge.
     entryDescription.bind(
         "<Return>",
@@ -514,6 +701,7 @@ def open_charges(user_id, name):
         )
     )
 
+
     load_charges(
         user_id,
         charges_tree,
@@ -522,7 +710,8 @@ def open_charges(user_id, name):
 
     entryCharge.focus()
 
-    # Wait until the Toplevel window is visible
+
+    # Wait until the window is visible
     # before making it modal.
     charges_window.update_idletasks()
     charges_window.wait_visibility()
@@ -530,19 +719,24 @@ def open_charges(user_id, name):
 
 
 # --------------------------------
-# Open Charges for Double-Clicked Row
+# Open Charges From Double-Click
 # --------------------------------
 
 def open_selected_user_charges(event=None):
-    # Get the row under the mouse pointer.
-    selected_item = tree.identify_row(event.y)
+    selected_item = tree.identify_row(
+        event.y
+    )
 
     if not selected_item:
         return
 
-    # Select the row that was double-clicked.
-    tree.selection_set(selected_item)
-    tree.focus(selected_item)
+    tree.selection_set(
+        selected_item
+    )
+
+    tree.focus(
+        selected_item
+    )
 
     row_data = tree.item(
         selected_item,
@@ -552,7 +746,44 @@ def open_selected_user_charges(event=None):
     if not row_data:
         return
 
-    user_id = row_data[0]
+    user_id = int(row_data[0])
+    name = row_data[1]
+
+    open_charges(
+        user_id,
+        name
+    )
+
+
+# --------------------------------
+# Open Charges From Selected Row
+# --------------------------------
+
+def add_charge():
+    selected_items = tree.selection()
+
+    if not selected_items:
+        messagebox.showerror(
+            "No User Selected",
+            "Please select a user to add a charge."
+        )
+        return
+
+    selected_item = selected_items[0]
+
+    row_data = tree.item(
+        selected_item,
+        "values"
+    )
+
+    if not row_data:
+        messagebox.showerror(
+            "No User Selected",
+            "Please select a user to add a charge."
+        )
+        return
+
+    user_id = int(row_data[0])
     name = row_data[1]
 
     open_charges(
@@ -566,6 +797,7 @@ def open_selected_user_charges(event=None):
 # --------------------------------
 
 form_frame = Frame(root)
+
 form_frame.pack(
     fill=X,
     padx=20,
@@ -583,6 +815,7 @@ lblName = Label(
     form_frame,
     text="Name:"
 )
+
 lblName.grid(
     row=0,
     column=0,
@@ -595,6 +828,7 @@ entryName = Entry(
     form_frame,
     width=20
 )
+
 entryName.grid(
     row=0,
     column=1,
@@ -609,6 +843,7 @@ lblGender = Label(
     form_frame,
     text="Gender:"
 )
+
 lblGender.grid(
     row=0,
     column=2,
@@ -627,11 +862,12 @@ comboGender = ttk.Combobox(
     values=(
         "Male",
         "Female",
-
+        "Other"
     ),
     state="readonly",
     width=12
 )
+
 comboGender.grid(
     row=0,
     column=3,
@@ -645,6 +881,7 @@ lblAge = Label(
     form_frame,
     text="Age:"
 )
+
 lblAge.grid(
     row=0,
     column=4,
@@ -657,6 +894,7 @@ entryAge = Entry(
     form_frame,
     width=8
 )
+
 entryAge.grid(
     row=0,
     column=5,
@@ -665,17 +903,71 @@ entryAge.grid(
 )
 
 
-# Add User Button
+# --------------------------------
+# Main Form Buttons
+# --------------------------------
+
+button_form_frame = Frame(
+    root
+)
+
+button_form_frame.pack(
+    fill=X,
+    padx=20,
+    pady=(0, 15)
+)
+
+
 btnSubmit = Button(
-    form_frame,
+    button_form_frame,
     text="Add User",
+    width=14,
     command=add_user
 )
-btnSubmit.grid(
-    row=0,
-    column=6,
-    padx=5,
-    pady=5
+
+btnSubmit.pack(
+    side=LEFT,
+    padx=(0, 5)
+)
+
+
+btnUpdate = Button(
+    button_form_frame,
+    text="Update User",
+    width=14,
+    command=update_selected_user,
+    state=DISABLED
+)
+
+btnUpdate.pack(
+    side=LEFT,
+    padx=5
+)
+
+
+btnClear = Button(
+    button_form_frame,
+    text="Clear",
+    width=14,
+    command=clear_form
+)
+
+btnClear.pack(
+    side=LEFT,
+    padx=5
+)
+
+
+btnCharges = Button(
+    button_form_frame,
+    text="Open Charges",
+    width=14,
+    command=add_charge
+)
+
+btnCharges.pack(
+    side=LEFT,
+    padx=5
 )
 
 
@@ -684,6 +976,7 @@ btnSubmit.grid(
 # --------------------------------
 
 tree_frame = Frame(root)
+
 tree_frame.pack(
     fill=BOTH,
     expand=True,
@@ -700,15 +993,18 @@ vertical_scrollbar = Scrollbar(
     tree_frame,
     orient=VERTICAL
 )
+
 vertical_scrollbar.pack(
     side=RIGHT,
     fill=Y
 )
 
+
 horizontal_scrollbar = Scrollbar(
     tree_frame,
     orient=HORIZONTAL
 )
+
 horizontal_scrollbar.pack(
     side=BOTTOM,
     fill=X
@@ -732,6 +1028,7 @@ tree = ttk.Treeview(
     yscrollcommand=vertical_scrollbar.set,
     xscrollcommand=horizontal_scrollbar.set
 )
+
 
 vertical_scrollbar.config(
     command=tree.yview
@@ -795,6 +1092,7 @@ tree.column(
     anchor=CENTER
 )
 
+
 tree.pack(
     side=LEFT,
     fill=BOTH,
@@ -821,45 +1119,26 @@ tree.tag_configure(
 # Event Bindings
 # --------------------------------
 
+# Single-click fills the main form.
+tree.bind(
+    "<<TreeviewSelect>>",
+    fill_form_from_tree
+)
+
+# Double-click opens the Charges window.
 tree.bind(
     "<Double-1>",
     open_selected_user_charges
 )
 
+# Press Enter from the Age field
+# to add a new user.
 entryAge.bind(
     "<Return>",
     lambda event: add_user()
 )
 
-def add_charge():
-    selected_item = tree.focus()
 
-    if not selected_item:
-        messagebox.showerror(
-            "No User Selected",
-            "Please select a user to add a charge."
-        )
-        return
-
-    row_data = tree.item(
-        selected_item,
-        "values"
-    )
-
-    if not row_data:
-        messagebox.showerror(
-            "No User Selected",
-            "Please select a user to add a charge."
-        )
-        return
-
-    user_id = row_data[0]
-    name = row_data[1]
-
-    open_charges(
-        user_id,
-        name
-    )
 # --------------------------------
 # Start Program
 # --------------------------------
