@@ -258,7 +258,26 @@ def load_charges(
             parent=charges_window
         )
 
+# --------------------------------
+# Show Total Charges
+# --------------------------------
 
+def show_total_charges(user_id, charges_window):
+    try:
+        total = logic.get_total_charges(user_id)
+
+        messagebox.showinfo(
+            "Total Charges",
+            f"Total charges: ${total:.2f}",
+            parent=charges_window
+        )
+
+    except Exception as error:
+        messagebox.showerror(
+            "Database Error",
+            f"Unable to calculate total charges.\n\n{error}",
+            parent=charges_window
+        )
 # --------------------------------
 # Open Charges Window
 # --------------------------------
@@ -472,6 +491,16 @@ def open_charges(user_id, name):
         padx=5
     )
 
+    btnShowSumOfCharges = Button(
+        button_frame,
+        text="Show Total Charges",
+        width=18,
+        command=lambda: show_total_charges(user_id, charges_window)
+    )
+    btnShowSumOfCharges.pack(
+        side=LEFT,
+        padx=5
+    )
     # Press Enter while in the description field
     # to save the charge.
     entryDescription.bind(
@@ -598,7 +627,7 @@ comboGender = ttk.Combobox(
     values=(
         "Male",
         "Female",
-        "Other"
+
     ),
     state="readonly",
     width=12

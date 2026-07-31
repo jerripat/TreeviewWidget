@@ -349,6 +349,30 @@ def delete_charge(charge_id):
 # --------------------------------
 # Start Database
 # --------------------------------
+# --------------------------------
+# Get Total Charges
+# --------------------------------
+
+def get_total_charges(user_id):
+    create_charges_table()
+
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute(
+        """
+        SELECT COALESCE(SUM(charge), 0)
+        FROM charges
+        WHERE user_id = ?
+        """,
+        (user_id,)
+    )
+
+    total = cursor.fetchone()[0]
+
+    conn.close()
+
+    return float(total)
 
 create_table()
 create_charges_table()
