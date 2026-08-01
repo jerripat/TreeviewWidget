@@ -114,7 +114,7 @@ def validate_user_form():
         entryAge.focus()
         return None
 
-    return name, gender, age
+    return name.title(), gender, age
 
 
 # --------------------------------
